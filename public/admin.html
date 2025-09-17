@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Manage Publications</title>
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #eeeef0;
+      color: #333;
+      font-size: 15px;
+    }
+
+    h1 {
+      text-align: center;
+      margin: 0 0 25px 0;
+      font-size: 24px;
+      font-weight: 600;
+      color: #222;
+    }
+
+    .form-container {
+      max-width: 700px;
+      margin: 0 auto 20px auto;
+      background: #fff;
+      padding: 22px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+
+      /* ✅ Center align everything */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .form-container input,
+    .form-container textarea {
+      width: 90%; /* keep inputs smaller than full width */
+      padding: 10px 12px;
+      margin: 8px 0;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+
+    textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    .form-container button {
+      padding: 8px 14px;
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+      font-size: 14px;
+      font-weight: 500;
+      margin-top: 10px;
+    }
+
+    .add-btn { background: #2ecc71; color: #fff; }
+    .add-btn:hover { background: #27ae60; }
+    .update-btn { background: #3498db; color: #fff; border: none; }  /* ❌ border removed */
+    .update-btn:hover { background: #cae0ee; }
+    .delete-btn { background: #e74c3c; color: #fff; border: none; }  /* ❌ border removed */
+    .delete-btn:hover { background: #f3b8b2; }
+
+    #message {
+      margin-top: 15px;
+      padding: 10px;
+      display: none;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+
+    #message.success { background: #2ecc71; color: #fff; }
+    #message.error { background: #e74c3c; color: #fff; }
+
+    /* Publication list */
+    .publication-list {
+      max-width: 700px;
+      margin: 20px auto;
+    }
+
+    .publication-item {
+      background: #fff;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    }
+
+    .publication-item span {
+      font-weight: 500;
+      color: #222;
+    }
+
+    .publication-item .actions { display:flex; gap:8px; }
+    .publication-item button { padding:6px 12px; font-size:13px; border-radius:5px; }
+
+    /* Search box */
+    .search-box {
+      max-width: 700px;
+      margin: 0 auto 20px auto;
+      display: flex;
+      justify-content: center;
+    }
+    .search-box input {
+      width: 100%;
+      padding: 10px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    /* Pagination */
+    .pagination {
+      display: flex;
+      justify-content: center;
+      margin: 20px 0;
+      gap: 8px;
+    }
+    .pagination button {
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .pagination button.active {
+      background: #3498db;
+      color: #fff;
+      border-color: #2980b9;
+    }
+    .pagination button:hover:not(.active) {
+      background: #f1f1f1;
+    }
+  </style>
+</head>
+<body>
+  <h1>Manage Publications</h1>
+
+  <div class="form-container">
+    <input type="hidden" id="pubId" />
+    <input type="text" id="title" placeholder="Title" required />
+    <input type="text" id="date" placeholder="Date (YYYY-MM-DD)" required />
+    <textarea id="description" placeholder="Description"></textarea>
+    <input type="text" id="link" placeholder="Link" />
+    <input type="text" id="image" placeholder="Image URL" />
+    <button class="add-btn" onclick="addOrUpdatePublication()">Add / Update Publication</button>
+    <div id="message"></div>
+  </div>
+
+  <!-- Search -->
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="Search publications..." oninput="applyFilters()" />
+  </div>
+
+  <!-- Publication List -->
+  <div class="publication-list" id="publicationList"></div>
+
+  <!-- Pagination -->
+  <div class="pagination" id="pagination"></div>
+
+  <script>
+    const apiUrl = "http://localhost:5000/api/publications";
+    let publications = [];
+    let filteredPublications = [];
+    let currentPage = 1;
+    const itemsPerPage = 5;
+
+    async function loadPublications() {
+      try {
+        const res = await fetch(apiUrl);
+        if (!res.ok) throw new Error('Failed to fetch');
+        publications = await res.json();
+        applyFilters();
+      } catch (err) {
+        showMessage("Error loading publications: " + err.message, "error");
+      }
+    }
+
+    function applyFilters() {
+      const searchTerm = document.getElementById("searchInput").value.toLowerCase();
+      filteredPublications = publications.filter(pub =>
+        (pub.title && pub.title.toLowerCase().includes(searchTerm)) ||
+        (pub.description && pub.description.toLowerCase().includes(searchTerm))
+      );
+      currentPage = 1;
+      displayPublicationList();
+    }
+
+    function displayPublicationList() {
+      const list = document.getElementById("publicationList");
+      list.innerHTML = "";
+
+      const start = (currentPage - 1) * itemsPerPage;
+      const end = start + itemsPerPage;
+      const pageItems = filteredPublications.slice(start, end);
+
+      pageItems.forEach(pub => {
+        const div = document.createElement("div");
+        div.className = "publication-item";
+
+        const titleSpan = document.createElement("span");
+        titleSpan.textContent = pub.title || "(no title)";
+
+        const actions = document.createElement("div");
+        actions.className = "actions";
+
+        const editBtn = document.createElement("button");
+        editBtn.className = "update-btn";
+        editBtn.textContent = "Edit";
+        editBtn.addEventListener('click', () => editPublication(pub._id || pub.id));
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "delete-btn";
+        deleteBtn.textContent = "Delete";
+        deleteBtn.addEventListener('click', () => deletePublication(pub._id || pub.id));
+
+        actions.appendChild(editBtn);
+        actions.appendChild(deleteBtn);
+
+        div.appendChild(titleSpan);
+        div.appendChild(actions);
+        list.appendChild(div);
+      });
+
+      renderPagination();
+    }
+
+    function renderPagination() {
+      const totalPages = Math.ceil(filteredPublications.length / itemsPerPage);
+      const paginationDiv = document.getElementById("pagination");
+      paginationDiv.innerHTML = "";
+
+      for (let i = 1; i <= totalPages; i++) {
+        const btn = document.createElement("button");
+        btn.textContent = i;
+        btn.className = (i === currentPage) ? "active" : "";
+        btn.addEventListener("click", () => {
+          currentPage = i;
+          displayPublicationList();
+        });
+        paginationDiv.appendChild(btn);
+      }
+    }
+
+    async function addOrUpdatePublication() {
+      const pubId = document.getElementById("pubId").value;
+      const publication = {
+        title: document.getElementById("title").value,
+        date: document.getElementById("date").value,
+        description: document.getElementById("description").value,
+        link: document.getElementById("link").value,
+        image: document.getElementById("image").value
+      };
+      try {
+        let res;
+        if (pubId) {
+          res = await fetch(`${apiUrl}/${pubId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(publication)
+          });
+        } else {
+          res = await fetch(apiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(publication)
+          });
+        }
+        if (res.ok) {
+          showMessage("Publication saved successfully!", "success");
+          resetForm();
+          loadPublications();
+        } else {
+          showMessage("Error saving publication.", "error");
+        }
+      } catch (err) {
+        showMessage("Error: " + err.message, "error");
+      }
+    }
+
+    function editPublication(id) {
+      const pub = publications.find(p => p._id === id || p.id === id);
+      if (!pub) return;
+      document.getElementById("pubId").value = pub._id || pub.id;
+      document.getElementById("title").value = pub.title;
+      document.getElementById("date").value = pub.date;
+      document.getElementById("description").value = pub.description;
+      document.getElementById("link").value = pub.link;
+      document.getElementById("image").value = pub.image;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function deletePublication(id) {
+      if (confirm("Delete this publication?")) {
+        try {
+          const res = await fetch(`${apiUrl}/${id}`, { method: 'DELETE' });
+          if (res.ok) {
+            showMessage("Publication deleted", "success");
+            loadPublications();
+          }
+        } catch (err) {
+          showMessage("Error deleting: " + err.message, "error");
+        }
+      }
+    }
+
+    function resetForm() {
+      document.getElementById("pubId").value = "";
+      document.getElementById("title").value = "";
+      document.getElementById("date").value = "";
+      document.getElementById("description").value = "";
+      document.getElementById("link").value = "";
+      document.getElementById("image").value = "";
+    }
+
+    function showMessage(msg, type) {
+      const messageDiv = document.getElementById("message");
+      messageDiv.textContent = msg;
+      messageDiv.className = type === "success" ? "success" : "error";
+      messageDiv.style.display = "block";
+      setTimeout(() => messageDiv.style.display = "none", 3000);
+    }
+
+    loadPublications();
+  </script>
+</body>
+</html>
